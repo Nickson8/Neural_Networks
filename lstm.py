@@ -14,30 +14,30 @@ class LSTM():
         self.X = np.hstack((X, np.ones((X.shape[0], 1))))
 
         #Visible State Matrix (B x H)
-        self.vs = np.random.randn((self.bs, self.h))
+        self.vs = np.random.randn(self.bs, self.h)
         self.vs1 = self.vs
 
         #Memory cell Matrix (B x H) and Weights (N+1 x H) and (H+1 x H)
-        self.mc = np.random.randn((self.bs, self.h))
+        self.mc = np.random.randn(self.bs, self.h)
         self.mc1 = self.mc
-        self.mcx = np.random.randn((self.n+1, self.h))
-        self.mch = np.random.randn((self.h+1, self.h))
+        self.mcx = np.random.randn(self.n+1, self.h)
+        self.mch = np.random.randn(self.h+1, self.h)
 
         #Target Vector
         self.y = y
 
         #Forget Gate Weights
-        self.fgx = np.random.randn((self.n+1, self.h))
-        self.fgh = np.random.randn((self.h+1, self.h))
+        self.fgx = np.random.randn(self.n+1, self.h)
+        self.fgh = np.random.randn(self.h+1, self.h)
         #Input Gate Weights
-        self.igx = np.random.randn((self.n+1, self.h))
-        self.igh = np.random.randn((self.h+1, self.h))
+        self.igx = np.random.randn(self.n+1, self.h)
+        self.igh = np.random.randn(self.h+1, self.h)
         #Output Gate Weights
-        self.ogx = np.random.randn((self.n+1, self.h))
-        self.ogh = np.random.randn((self.h+1, self.h))
+        self.ogx = np.random.randn(self.n+1, self.h)
+        self.ogh = np.random.randn(self.h+1, self.h)
 
         #Predictor Weight Matrix
-        self.pw = np.random.randn((self.h, 1))
+        self.pw = np.random.randn(self.h, self.y.shape[1])
     
     
     def accuracy(self, target, prediction):

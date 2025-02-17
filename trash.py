@@ -16,9 +16,7 @@ ar = np.array([[2, 1],
 
 X2 = np.hstack( ( X, np.ones(X.shape[0]).reshape(-1,1) ) )
 
-print(X)
+ar2 = np.random.randn(3,2)
 
-print()
-
-print(softmax(ar))
+print(ar2)
 
