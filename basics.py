@@ -84,7 +84,7 @@ def show_data(data_T, boundry):
 
 class NeuralNet():
     def __init__(self, layers_sizes, hidden_af=['tanh'], output_af=['lin']):
-        self.depth = len(layers_sizes) + 1
+        self.depth = layers_sizes
         self.layers_sizes = layers_sizes
         self.layers_sizes.append(1)
         self.W = []

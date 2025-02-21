@@ -33,4 +33,5 @@ ar2 = np.array([[-300, 1],
                 [-80, 40]])
 
 print(clip_gradient_by_norm(ar2))
+print(0.01 * clip_gradient_by_norm(ar2))
 
