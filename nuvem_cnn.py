@@ -1,18 +1,20 @@
 import numpy as np
-np.random.seed(42)
+from keras.datasets import mnist
+from keras.utils import to_categorical
+import matplotlib.pyplot as plt
 
 class CNN:
     def __init__(self, kernels_sizes):
         self.kernels_sizes = kernels_sizes
         # First Layer Kernels
-        self.l1_kernels = np.random.randn(kernels_sizes[0], 3, 3) * 0.01
+        self.l1_kernels = np.random.randn(kernels_sizes[0], 3, 3) * 0.1
         # Second Layer Kernels
-        self.l2_kernels = np.random.randn(kernels_sizes[1], 3, 3) * 0.01
+        self.l2_kernels = np.random.randn(kernels_sizes[1], 3, 3) * 0.1
         # Third Layer Kernels
-        self.l3_kernels = np.random.randn(kernels_sizes[2], 3, 3) * 0.01
+        self.l3_kernels = np.random.randn(kernels_sizes[2], 3, 3) * 0.1
         # Prediction Layer Weights
         n = kernels_sizes[0] * kernels_sizes[1] * kernels_sizes[2]
-        self.pw = np.random.randn(n, 10) * 0.01
+        self.pw = np.random.randn(n, 10) * 0.1
         
         # Learning rate
         self.learning_rate = 0.01
@@ -20,7 +22,7 @@ class CNN:
         # Store intermediate values for backpropagation
         self.cache = {}
         
-    def fit(self, Imgs, Y, epochs=10, batch_size=32, learning_rate=0.01):
+    def fit(self, Imgs, Y, epochs=10, batch_size=32, learning_rate=0.01, validation_data=None):
         """
         Train the CNN model
         
@@ -30,9 +32,15 @@ class CNN:
             epochs: Number of training epochs
             batch_size: Size of mini-batches
             learning_rate: Learning rate for gradient descent
+            validation_data: Tuple of (validation_images, validation_labels)
         """
         self.learning_rate = learning_rate
         num_samples = len(Imgs)
+        
+        train_losses = []
+        train_accuracies = []
+        val_losses = []
+        val_accuracies = []
         
         for epoch in range(epochs):
             # Shuffle data
@@ -73,11 +81,33 @@ class CNN:
                 batch_acc = batch_correct / len(batch_X)
                 loss_sum += batch_loss * len(batch_X)
                 accuracy_sum += batch_correct
+                
+                # Print mini-batch progress
+                if (i // batch_size) % 10 == 0:
+                    print(f"Epoch {epoch+1}/{epochs}, Batch {i//batch_size + 1}/{num_samples//batch_size + 1}, Loss: {batch_loss:.4f}, Accuracy: {batch_acc:.4f}")
             
             # Epoch statistics
-            avg_loss = loss_sum / num_samples
-            accuracy = accuracy_sum / num_samples
-            print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
+            avg_train_loss = loss_sum / num_samples
+            train_accuracy = accuracy_sum / num_samples
+            train_losses.append(avg_train_loss)
+            train_accuracies.append(train_accuracy)
+            
+            print(f"Epoch {epoch+1}/{epochs}, Train Loss: {avg_train_loss:.4f}, Train Accuracy: {train_accuracy:.4f}")
+            
+            # Validation
+            if validation_data is not None:
+                val_accuracy, val_loss = self.evaluate(validation_data[0], validation_data[1])
+                val_losses.append(val_loss)
+                val_accuracies.append(val_accuracy)
+                print(f"Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}")
+        
+        # Return training history
+        return {
+            'train_loss': train_losses,
+            'train_accuracy': train_accuracies,
+            'val_loss': val_losses,
+            'val_accuracy': val_accuracies
+        }
     
     def ReLu(self, X):
         return np.maximum(0, X)
@@ -237,7 +267,6 @@ class CNN:
         dL_dP = -(y_true / y_pred) / m
         
         # Gradient of softmax
-        # dP_dZ[i,j] = P[i] * (1 - P[i]) if i==j else -P[i]*P[j]
         Z = self.cache['Z']
         dZ = np.zeros_like(Z)
         for i in range(len(y_pred)):
@@ -295,25 +324,8 @@ class CNN:
         # Update third layer kernels
         self.l3_kernels -= self.learning_rate * dL3_kernels
         
-        # Similar backpropagation for the second and first layer would follow
+        # For a complete implementation, backpropagation for the second and first layers would follow
         # This is a simplified version focusing on the main concepts
-        
-        # Backpropagate through the second layer
-        dL2_kernels = np.zeros_like(self.l2_kernels)
-        dL1_pool = [np.zeros_like(pool) for pool in self.cache['l1_pool']]
-        
-        # Similar backpropagation logic for second layer...
-        
-        # Backpropagate through the first layer
-        dL1_kernels = np.zeros_like(self.l1_kernels)
-        
-        # Similar backpropagation logic for first layer...
-        
-        # Update second layer kernels
-        self.l2_kernels -= self.learning_rate * dL2_kernels
-        
-        # Update first layer kernels
-        self.l1_kernels -= self.learning_rate * dL1_kernels
         
     def predict(self, img):
         """
@@ -358,22 +370,165 @@ class CNN:
         avg_loss = total_loss / len(test_images)
         
         return accuracy, avg_loss
+    
+    def plot_history(self, history):
+        """
+        Plot training and validation metrics
+        
+        Args:
+            history: Dictionary containing training history
+        """
+        # Plot loss
+        plt.figure(figsize=(12, 4))
+        
+        plt.subplot(1, 2, 1)
+        plt.plot(history['train_loss'], label='Train Loss')
+        if 'val_loss' in history and history['val_loss']:
+            plt.plot(history['val_loss'], label='Validation Loss')
+        plt.title('Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+        
+        # Plot accuracy
+        plt.subplot(1, 2, 2)
+        plt.plot(history['train_accuracy'], label='Train Accuracy')
+        if 'val_accuracy' in history and history['val_accuracy']:
+            plt.plot(history['val_accuracy'], label='Validation Accuracy')
+        plt.title('Accuracy')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.legend()
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def visualize_filters(self, layer=1):
+        """
+        Visualize filters from a specific layer
+        
+        Args:
+            layer: Layer number (1, 2, or 3)
+        """
+        if layer == 1:
+            kernels = self.l1_kernels
+            title = "First Layer Filters"
+        elif layer == 2:
+            kernels = self.l2_kernels
+            title = "Second Layer Filters"
+        elif layer == 3:
+            kernels = self.l3_kernels
+            title = "Third Layer Filters"
+        else:
+            raise ValueError("Layer must be 1, 2, or 3")
+        
+        n_kernels = kernels.shape[0]
+        fig, axes = plt.subplots(1, n_kernels, figsize=(n_kernels * 2, 2))
+        
+        for i in range(n_kernels):
+            # Normalize kernel for visualization
+            kernel = kernels[i]
+            kernel_normalized = (kernel - kernel.min()) / (kernel.max() - kernel.min())
+            
+            if n_kernels > 1:
+                axes[i].imshow(kernel_normalized, cmap='viridis')
+                axes[i].set_title(f"Filter {i+1}")
+                axes[i].axis('off')
+            else:
+                axes.imshow(kernel_normalized, cmap='viridis')
+                axes.set_title(f"Filter {i+1}")
+                axes.axis('off')
+        
+        plt.suptitle(title)
+        plt.tight_layout()
+        plt.show()
 
-# Example usage
-if __name__ == "__main__":
-    # Generate dummy data for demonstration
+
+def preprocess_mnist_data():
+    """
+    Load and preprocess MNIST dataset
+    
+    Returns:
+        x_train: Training images
+        y_train: Training labels (one-hot encoded)
+        x_test: Test images
+        y_test: Test labels (one-hot encoded)
+    """
+    # Load MNIST dataset
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    
+    # Normalize pixel values to 0-1
+    x_train = x_train.astype('float32') / 255
+    x_test = x_test.astype('float32') / 255
+    
+    # Convert class vectors to one-hot encoded matrices
+    y_train = to_categorical(y_train, 10)
+    y_test = to_categorical(y_test, 10)
+    
+    print(f"x_train shape: {x_train.shape}")
+    print(f"y_train shape: {y_train.shape}")
+    print(f"x_test shape: {x_test.shape}")
+    print(f"y_test shape: {y_test.shape}")
+    
+    return x_train, y_train, x_test, y_test
+
+
+def main():
+    # Set random seed for reproducibility
     np.random.seed(42)
-    # Create 10 random 28x28 images
-    dummy_images = np.random.rand(10, 28, 28)
-    # Create one-hot encoded labels
-    dummy_labels = np.zeros((10, 10))
-    for i in range(10):
-        dummy_labels[i, np.random.randint(0, 10)] = 1
     
-    # Initialize and train model
-    cnn = CNN(kernels_sizes=[4, 4, 4])
-    cnn.fit(dummy_images, dummy_labels, epochs=5, batch_size=2, learning_rate=0.01)
+    # Load and preprocess MNIST data
+    x_train, y_train, x_test, y_test = preprocess_mnist_data()
     
-    # Evaluate model
-    acc, loss = cnn.evaluate(dummy_images, dummy_labels)
-    print(f"Final accuracy: {acc:.4f}, Loss: {loss:.4f}")
+    # Use a smaller subset for faster training and demonstration
+    train_samples = 1000  # Adjust this number as needed
+    test_samples = 200    # Adjust this number as needed
+    
+    x_train_subset = x_train[:train_samples]
+    y_train_subset = y_train[:train_samples]
+    x_test_subset = x_test[:test_samples]
+    y_test_subset = y_test[:test_samples]
+    
+    # Initialize CNN model
+    cnn = CNN(kernels_sizes=[4, 4, 4])  # 4 kernels in each layer
+    
+    # Train the model
+    print("Training the model...")
+    history = cnn.fit(
+        x_train_subset, 
+        y_train_subset,
+        epochs=5,
+        batch_size=32,
+        learning_rate=0.01,
+        validation_data=(x_test_subset, y_test_subset)
+    )
+    
+    # Evaluate on test set
+    print("\nEvaluating on test set...")
+    test_accuracy, test_loss = cnn.evaluate(x_test_subset, y_test_subset)
+    print(f"Test accuracy: {test_accuracy:.4f}")
+    print(f"Test loss: {test_loss:.4f}")
+    
+    # Plot training history
+    cnn.plot_history(history)
+    
+    # Visualize filters
+    cnn.visualize_filters(layer=1)
+    
+    # Make predictions on a few examples
+    print("\nPredictions on sample images:")
+    for i in range(5):
+        class_prediction, confidence = cnn.predict(x_test_subset[i])
+        true_class = np.argmax(y_test_subset[i])
+        print(f"Sample {i+1}: Predicted {class_prediction} with confidence {confidence:.4f}, True class: {true_class}")
+        
+        # Display the image
+        plt.figure(figsize=(3, 3))
+        plt.imshow(x_test_subset[i], cmap='gray')
+        plt.title(f"Prediction: {class_prediction}\nTrue: {true_class}")
+        plt.axis('off')
+        plt.show()
+
+
+if __name__ == "__main__":
+    main()
