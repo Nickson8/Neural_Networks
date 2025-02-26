@@ -18,6 +18,10 @@ class CNN:
         n = kernels_sizes[0] * kernels_sizes[1] * kernels_sizes[2]
         self.pw = np.random.randn(n,10)
     
+    def fit(self, Imgs, Y):
+        self.Imgs = Imgs
+        self.Y = Y
+
     def ReLu(self, X):
         return max(0, X)
     
@@ -57,13 +61,15 @@ class CNN:
 
     def foward(self, img):
         #First Layer
-        l1_results = []
+        Za = []
+        A = []
+        Ra = []
         for kernel in range(self.l1_kernels.shape[0]):
-            l1_results.append( self.Pool( self.Conv(img=img, kernel=self.l1_kernels[kernel]) ) )
+            Ra.append( self.Pool( self.Conv(img=img, kernel=self.l1_kernels[kernel]) ) )
         
         #Second Layer
         l2_results = []
-        for feature_map in l1_results:
+        for feature_map in Ra:
             for kernel in range(self.l2_kernels.shape[0]):
                 l2_results.append( self.Pool( self.Conv(img=feature_map, kernel=self.l2_kernels[kernel]) ) )
         
@@ -73,12 +79,49 @@ class CNN:
             for kernel in range(self.l3_kernels.shape[0]):
                 l3_results.append( self.Pool( self.Conv(img=feature_map, kernel=self.l3_kernels[kernel]) ) )
         
-        X = np.array([i[0] for i in l3_results]).reshape(1,-1)[0]
+        R = np.array([i[0] for i in l3_results]).reshape(1,-1)[0]
 
         #Prediction layer
-        p = self.softmax( X @ self.pw)
+        Z = R @ self.pw
+        P = self.softmax( Z )
 
-        return p
+        return (R, P)
+    
+    def cross_entropy_loss(self, Y, P):
+        return np.max(-Y * np.log(P))
+    
+    def train(self, interations, lr):
+        for epoch in interations:
+            loss = 0
+            for Img, Y in zip(self.Imgs, self.Y):
+                #R é o input da camada Softmax (antes de ser mult. pelos pesos) e P é o output da Softmax
+                R, P = self.foward(img=Img)
+                loss += self.cross_entropy_loss(Y, P)
+
+                t = np.argmax(Y)
+
+                mem = 1
+
+                pw = self.pw
+
+                #Updating Prediction Layer
+                for c in range(self.pw.shape[1]):
+                    Pc = P[c]
+                    if (t == c):
+                        # (d Loss / d Pt) * (d Pt / d Zt)
+                        mem *= (Pc-1)
+
+                        for l in range(self.pw.shape[0]):   
+                            self.pw[l][c] -= lr * (Pc-1) * R[l]
+                    else:
+                        for l in range(self.pw.shape[0]):   
+                            self.pw[l][c] -= lr * Pc * R[l]
+                
+                
+                #Updating the Third Layer Kernels
+
+            print(loss/len(self.Imgs))
+
 
 
 #=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*==*=*=*=*=*=*=*=*=*=*=*==*=*=*=*=*=*=*=*=*=*=*==*=*=*=*=*=*=*=*=*=*=*=
@@ -87,4 +130,4 @@ cnn = CNN([5,2,2])
 
 img = np.random.randn(28,28)
 
-print(cnn.foward(img))
+print( cnn.cross_entropy_loss( np.array([0,0,0,0,1,0,0,0,0,0]) , cnn.foward(img) ) )
