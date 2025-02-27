@@ -2,6 +2,7 @@ import numpy as np
 from keras.datasets import mnist
 from keras.utils import to_categorical
 import matplotlib.pyplot as plt
+from time import sleep
 
 class CNN:
     def __init__(self, kernels_sizes):
@@ -22,7 +23,7 @@ class CNN:
         # Store intermediate values for backpropagation
         self.cache = {}
         
-    def fit(self, Imgs, Y, epochs=10, batch_size=32, learning_rate=0.01, validation_data=None):
+    def train(self, Imgs, Y, epochs=10, batch_size=32, learning_rate=0.01, validation_data=None):
         """
         Train the CNN model
         
@@ -117,14 +118,18 @@ class CNN:
     
     def conv_(self, img_part, kernel):
         return self.ReLu(np.sum(img_part * kernel))
+    def convL_(self, img_part, kernel):
+        return np.sum(img_part * kernel)
     
     def Conv(self, img, kernel):
         # Convolution with 3x3 kernel and stride 1
         new = np.zeros((img.shape[0] - 2, img.shape[1] - 2))
+        newL = np.zeros((img.shape[0] - 2, img.shape[1] - 2))
         for i in range(img.shape[0] - 2):
             for j in range(img.shape[1] - 2):
                 new[i, j] = self.conv_(img_part=img[i:i+3, j:j+3], kernel=kernel)
-        return new
+                newL[i, j] = self.convL_(img_part=img[i:i+3, j:j+3], kernel=kernel)
+        return new, newL
     
     def pool_(self, img_part):
         # 2x2 max-pooling
@@ -174,54 +179,63 @@ class CNN:
         
         # First Layer
         l1_conv_outputs = []
+        l1_conv_outputsL = []
         l1_pool_outputs = []
         l1_pool_indices = []
         
         for k in range(self.l1_kernels.shape[0]):
-            conv_output = self.Conv(img=img, kernel=self.l1_kernels[k])
+            conv_output, conv_outputL = self.Conv(img=img, kernel=self.l1_kernels[k])
             l1_conv_outputs.append(conv_output)
+            l1_conv_outputsL.append(conv_outputL)
             
             pool_output, pool_indices = self.Pool(conv_output)
             l1_pool_outputs.append(pool_output)
             l1_pool_indices.append(pool_indices)
         
         self.cache['l1_conv'] = l1_conv_outputs
+        self.cache['l1_convL'] = l1_conv_outputsL
         self.cache['l1_pool'] = l1_pool_outputs
         self.cache['l1_pool_indices'] = l1_pool_indices
         
         # Second Layer
         l2_conv_outputs = []
+        l2_conv_outputsL = []
         l2_pool_outputs = []
         l2_pool_indices = []
         
-        for i, feature_map in enumerate(l1_pool_outputs):
+        for feature_map in l1_pool_outputs:
             for k in range(self.l2_kernels.shape[0]):
-                conv_output = self.Conv(img=feature_map, kernel=self.l2_kernels[k])
+                conv_output, conv_outputL = self.Conv(img=feature_map, kernel=self.l2_kernels[k])
                 l2_conv_outputs.append(conv_output)
+                l2_conv_outputsL.append(conv_outputL)
                 
                 pool_output, pool_indices = self.Pool(conv_output)
                 l2_pool_outputs.append(pool_output)
                 l2_pool_indices.append(pool_indices)
         
         self.cache['l2_conv'] = l2_conv_outputs
+        self.cache['l2_convL'] = l2_conv_outputsL
         self.cache['l2_pool'] = l2_pool_outputs
         self.cache['l2_pool_indices'] = l2_pool_indices
         
         # Third Layer
         l3_conv_outputs = []
+        l3_conv_outputsL = []
         l3_pool_outputs = []
         l3_pool_indices = []
         
         for i, feature_map in enumerate(l2_pool_outputs):
             for k in range(self.l3_kernels.shape[0]):
-                conv_output = self.Conv(img=feature_map, kernel=self.l3_kernels[k])
+                conv_output, conv_outputL = self.Conv(img=feature_map, kernel=self.l3_kernels[k])
                 l3_conv_outputs.append(conv_output)
+                l3_conv_outputsL.append(conv_outputL)
                 
                 pool_output, pool_indices = self.Pool(conv_output)
                 l3_pool_outputs.append(pool_output)
                 l3_pool_indices.append(pool_indices)
         
         self.cache['l3_conv'] = l3_conv_outputs
+        self.cache['l3_convL'] = l3_conv_outputsL
         self.cache['l3_pool'] = l3_pool_outputs
         self.cache['l3_pool_indices'] = l3_pool_indices
         
@@ -252,6 +266,72 @@ class CNN:
         y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
         return -np.sum(y_true * np.log(y_pred))
     
+    def gradients_of_conv_layer(self, dL_pool, input_of_layer, kernels, conv_outputLT, pool_indicesT):
+        """
+        Funçao para calcular o gradiente dos kernels de uma layer
+        
+        Parametros
+        -dL_pool: Gradiente do Pool step que é recebido da layer anterior
+        -input_of_layer: Input que aquela layer de kernels recebe, que é o resultado do pool
+        step da layer anterior
+        -kernels: kernels daquela layer
+        -conv_outputL: Resultados da convoluçao daquela layer antes da ReLU
+        -pool_indices: indices dos valores escolhidos pelo Pool step
+
+        Returns
+        -dL_kernels: Gradiente para ajustar os kernels
+        -dLa_pool: Gradiente a ser passado para a proxima layer
+        """
+        dL_kernels = np.zeros_like(kernels)
+        dLa_pool = [np.zeros_like(pool) for pool in input_of_layer]
+
+        feature_idx = 0
+        for la_feature_idx in range(len(input_of_layer)):
+            for k in range(kernels.shape[0]):
+                # Get stored values
+                conv_outputL = conv_outputLT[feature_idx]
+                la_feature = input_of_layer[la_feature_idx]
+                pool_indices = pool_indicesT[feature_idx]
+
+                 # Gradient for this feature
+                dFeature = dL_pool[feature_idx] #5x5
+
+                #Ajuste para a terceira layer
+                if(dFeature.shape == ()):
+                    dFeature = np.array([[dFeature]])
+                
+                
+                # Backprop through pooling layer
+                dPool = np.zeros_like(conv_outputL) #11x11
+                # Set gradient only at the max position
+                i = 0
+                for l in range(dFeature.shape[0]):
+                    j = 0
+                    for c in range(dFeature.shape[1]):
+                        max_i, max_j = pool_indices[l][c]
+                        dPool[i:i+2, j:j+2][max_i - (max_i//2)*2, max_j - (max_j//2)*2] = dFeature[l][c]
+
+                        j +=2
+                    i +=2
+
+                # Backprop through ReLU
+                dReLU = dPool * self.ReLu_derivative(conv_outputL) #11x11
+
+                
+                # Backprop through convolution
+                # Update kernel gradients
+                for i in range(la_feature.shape[0] - 2):
+                    for j in range(la_feature.shape[1] - 2):
+                        if dReLU[i, j] != 0:
+                            dL_kernels[k] += dReLU[i, j] * la_feature[i:i+3, j:j+3]
+                            # Also accumulate gradients for previous layer
+                            dLa_pool[la_feature_idx][i:i+3, j:j+3] += dReLU[i, j] * kernels[k]
+                
+                feature_idx += 1
+        
+        return dL_kernels, dLa_pool
+
+
     def backward(self, img, y_true, features, y_pred):
         """
         Backward pass for backpropagation
@@ -285,47 +365,21 @@ class CNN:
         # Gradient of features
         dFeatures = dZ @ self.pw.T
         
-        # Backpropagate through the third layer
-        dL3_kernels = np.zeros_like(self.l3_kernels)
-        dL2_pool = [np.zeros_like(pool) for pool in self.cache['l2_pool']]
-        
-        feature_idx = 0
-        for i, l2_feature_idx in enumerate(range(len(self.cache['l2_pool']))):
-            for k in range(self.l3_kernels.shape[0]):
-                # Get stored values
-                pool_output = self.cache['l3_pool'][feature_idx]
-                pool_indices = self.cache['l3_pool_indices'][feature_idx]
-                conv_output = self.cache['l3_conv'][feature_idx]
-                l2_feature = self.cache['l2_pool'][l2_feature_idx]
-                
-                # Gradient for this feature
-                dFeature = dFeatures[feature_idx]
-                
-                # Backprop through pooling layer
-                dPool = np.zeros_like(conv_output)
-                # Set gradient only at the max position
-                max_i, max_j = pool_indices[0, 0]
-                dPool[max_i - (max_i//2)*2, max_j - (max_j//2)*2] = dFeature
-                
-                # Backprop through ReLU
-                dReLU = dPool * self.ReLu_derivative(conv_output)
-                
-                # Backprop through convolution
-                # Update kernel gradients
-                for i in range(l2_feature.shape[0] - 2):
-                    for j in range(l2_feature.shape[1] - 2):
-                        if dReLU[i, j] != 0:
-                            dL3_kernels[k] += dReLU[i, j] * l2_feature[i:i+3, j:j+3]
-                            # Also accumulate gradients for previous layer
-                            dL2_pool[l2_feature_idx][i:i+3, j:j+3] += dReLU[i, j] * self.l3_kernels[k]
-                
-                feature_idx += 1
-        
+        #Getting third layer gradients
+        dL3_kernels, dL2_pool = self.gradients_of_conv_layer(dFeatures, self.cache['l2_pool'], self.l3_kernels, self.cache['l3_convL'], self.cache['l3_pool_indices'])
         # Update third layer kernels
         self.l3_kernels -= self.learning_rate * dL3_kernels
         
-        # For a complete implementation, backpropagation for the second and first layers would follow
-        # This is a simplified version focusing on the main concepts
+
+        #Getting second layer kernels
+        dL2_kernels, dL1_pool = self.gradients_of_conv_layer(dL2_pool, self.cache['l1_pool'], self.l2_kernels, self.cache['l2_convL'], self.cache['l2_pool_indices'])
+        # Update second layer kernels
+        self.l2_kernels -= self.learning_rate * dL2_kernels
+
+        #Getting first layer kernels
+        dL1_kernels, _ = self.gradients_of_conv_layer(dL1_pool, [img], self.l1_kernels, self.cache['l1_convL'], self.cache['l1_pool_indices'])
+        # Update first layer kernels
+        self.l1_kernels -= self.learning_rate * dL1_kernels
         
     def predict(self, img):
         """
@@ -490,14 +544,14 @@ def main():
     y_test_subset = y_test[:test_samples]
     
     # Initialize CNN model
-    cnn = CNN(kernels_sizes=[4, 4, 4])  # 4 kernels in each layer
+    cnn = CNN(kernels_sizes=[6, 6, 6])  # 4 kernels in each layer
     
     # Train the model
     print("Training the model...")
-    history = cnn.fit(
+    history = cnn.train(
         x_train_subset, 
         y_train_subset,
-        epochs=5,
+        epochs=3,
         batch_size=32,
         learning_rate=0.01,
         validation_data=(x_test_subset, y_test_subset)
